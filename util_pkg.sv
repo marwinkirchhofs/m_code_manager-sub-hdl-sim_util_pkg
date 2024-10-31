@@ -357,11 +357,11 @@ package util_pkg;
      * need to concatenate.
      */
     class cls_wide_int #(
-        parameter           BIT_WIDTH = 64,
-        localparam          MAX_WIDE_INT = {BIT_WIDTH{1'b1}},
-        localparam          NUM_32INT = $clog2(BIT_WIDTH),
-        localparam          BITS_REMAINDER_32INT = BIT_WIDTH - 32*NUM_32INT
+        parameter           BIT_WIDTH = 64
     );
+        localparam          MAX_WIDE_INT = {BIT_WIDTH{1'b1}};
+        localparam          NUM_32INT = $floor(BIT_WIDTH/32);
+        localparam          BITS_REMAINDER_32INT = BIT_WIDTH - 32*NUM_32INT;
 
         typedef bit[BIT_WIDTH-1:0] wide_int_t;
 
@@ -371,7 +371,7 @@ package util_pkg;
         /*
          * return a random number of BIT_WIDTH
          */
-        function static wide_int_t get_random(wide_int_t min=0, wide_int_t max=MAX_WIDE_INT);
+        static function wide_int_t get_random(wide_int_t min=0, wide_int_t max=MAX_WIDE_INT);
             automatic wide_int_t result = '0;
             automatic int i=0;
             // bit to indicate if there have been more significant bits set in 
@@ -386,20 +386,20 @@ package util_pkg;
             // MSBs.
             result[BIT_WIDTH-1 -: BITS_REMAINDER_32INT] =
                             $urandom_range(0, max[BIT_WIDTH-1 -: BITS_REMAINDER_32INT]);
-            if (! result[BIT_WIDTH-1 -: BITS_REMAINDER_32INT] == '0) begin
+            if (! max[BIT_WIDTH-1 -: BITS_REMAINDER_32INT] == '0) begin
                 max_larger = 1'b1;
             end
             for (i=(NUM_32INT*32); i>0; i-=32) begin
                 if (max_larger) begin
                     // there has been a more significant bit set in `max`, so 
                     // you're safe to just randomize
-                    result[i -: 32] = $urandom;
+                    result[i-1 -: 32] = $urandom;
                 end else begin
-                    if (! max[i -: 32] == 32'b0) begin
-                        result[i -: 32] = $urandom_range(0, max[i -: 32]);
+                    if (! max[i-1 -: 32] == 32'b0) begin
+                        result[i-1 -: 32] = $urandom_range(0, max[i-1 -: 32]);
                         max_larger = 1'b1;
                     end else begin
-                        result[i -: 32] = $urandom;
+                        result[i-1 -: 32] = $urandom;
                     end
                 end
             end
@@ -446,23 +446,29 @@ package util_pkg;
 //                 exponent+fun_float_exponent_bias(FLOAT_STD_IEEE_754_64),
 //                 mantissa});
 //     endfunction
-    function automatic real real_random(real min, real max);
-        bit [63:0] max_bits = $realtobits(max);
-        uint64_t max_exponent = uint64_t'(max_bits[62:52]);
-        uint64_t max_mantissa = uint64_t'(max_bits[51:0]);
-        bit max_sign_bit = max_bits[63];
-        bit [63:0] min_bits = $realtobits(min);
-        uint64_t min_exponent = uint64_t'(min_bits[62:52]);
-        uint64_t min_mantissa = uint64_t'(min_bits[51:0]);
-        bit min_sign_bit = min_bits[63];
+    function automatic real real_random(real min, real max,
+                            int user_min_exponent=-fun_float_exponent_bias(FLOAT_STD_IEEE_754_64));
+        automatic bit [63:0] max_bits = $realtobits(max);
+        automatic uint64_t max_exponent = uint64_t'(max_bits[62:52]);
+        automatic uint64_t max_mantissa = uint64_t'(max_bits[51:0]);
+        automatic bit max_sign_bit = max_bits[63];
+        automatic bit [63:0] min_bits = $realtobits(min);
+        automatic uint64_t min_exponent = uint64_t'(min_bits[62:52]);
+        automatic uint64_t min_mantissa = uint64_t'(min_bits[51:0]);
+        automatic bit min_sign_bit = min_bits[63];
 
         // determined later depending on the sign bits
-        int actual_min_exponent;
-        int actual_max_exponent;
+        automatic uint64_t actual_min_exponent;
+        automatic uint64_t actual_max_exponent;
+        automatic uint64_t actual_min_mantissa;
+        automatic uint64_t actual_max_mantissa;
 
-        bit sign_bit;
-        bit [10:0] exponent;
-        bit [51:0] mantissa;
+        automatic uint64_t user_min_exponent_biased =
+                        user_min_exponent + fun_float_exponent_bias(FLOAT_STD_IEEE_754_64);
+
+        automatic bit sign_bit;
+        automatic bit [10:0] exponent;
+        automatic bit [51:0] mantissa;
 
         // STEP 1: SIGN BIT
         // if the max is negative, result has to be negative, and vice versa if 
@@ -472,9 +478,8 @@ package util_pkg;
         end else if (~min_sign_bit) begin
             sign_bit = 1'b0;
         end else begin
-            sign_bit = $random;
+            sign_bit = $urandom;
         end
-
 
         // STEP 2: EXPONENT
         // need to differentiate which of min_exponent and max_exponent applies, 
@@ -484,26 +489,38 @@ package util_pkg;
             1'b0: begin
                 if (min_sign_bit) begin
                     // result>=0, (max>0), min<0
-                    actual_min_exponent = 0;
+                    actual_min_exponent = '0;
+                    actual_min_mantissa = '0;
                     actual_max_exponent = max_exponent;
+                    actual_max_mantissa = max_mantissa;
                 end else begin
                     // result>=0, (max>0), min>=0
                     actual_min_exponent = min_exponent;
+                    actual_min_mantissa = min_mantissa;
                     actual_max_exponent = max_exponent;
+                    actual_max_mantissa = max_mantissa;
                 end
             end
             1'b1: begin
-                if (max_sign_bit) begin
+                if (~max_sign_bit) begin
                     // result<0, (min<0), max>=0
-                    actual_min_exponent = 0;
+                    actual_min_exponent = '0;
+                    actual_min_mantissa = '0;
                     actual_max_exponent = min_exponent;
+                    actual_max_mantissa = min_mantissa;
                 end else begin
                     // result<0, (min<0), max<0
                     actual_min_exponent = max_exponent;
+                    actual_min_mantissa = max_mantissa;
                     actual_max_exponent = min_exponent;
+                    actual_max_mantissa = min_mantissa;
                 end
             end
         endcase
+        if (actual_min_exponent < user_min_exponent_biased) begin
+            actual_min_exponent = user_min_exponent_biased;
+            actual_min_mantissa = '0;
+        end
         exponent = $urandom_range(actual_min_exponent, actual_max_exponent);
 
         // STEP 3: MANTISSA
@@ -513,17 +530,20 @@ package util_pkg;
         // lower-equal the maximum mantissa. Likewise if the exponent is 
         // min_exponent, the mantissa has to be larger-equal min_mantissa.
         if (exponent == actual_max_exponent) begin
-            mantissa = $urandom_range(0, max_mantissa);
+//             mantissa = $urandom_range(0, max_mantissa);
+            mantissa = cls_wide_int#(52)::get_random(0, actual_max_mantissa);
         end else if (exponent == actual_min_exponent) begin
 //             mantissa = $urandom_range(min_mantissa, uint64_t'({52'{1'b1}}));
-            mantissa = cls_wide_int#(52)::get_random();
+            mantissa = cls_wide_int#(52)::get_random(actual_min_mantissa);
         end else begin
             mantissa = cls_wide_int#(52)::get_random();
+//             mantissa = '0;
         end
 
         return $bitstoreal({
                 sign_bit,
-                exponent+fun_float_exponent_bias(FLOAT_STD_IEEE_754_64),
+//                 exponent+fun_float_exponent_bias(FLOAT_STD_IEEE_754_64),
+                exponent,
                 mantissa});
     endfunction
 
