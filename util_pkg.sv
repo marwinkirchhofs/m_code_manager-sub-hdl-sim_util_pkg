@@ -435,6 +435,9 @@ package util_pkg;
         return result;
     endfunction
 
+    // verificationacademy.com/forums/t/is-there-a-function-which-returns-the-largest-value-in-systemverilog-like-max-in-c/31001
+    let max(num_1, num_2) = (num_1 > num_2) ? num_1 : num_2;
+
     /*
     * generate a randomized constrained real number
     * :max_exponent: The NON-BIASED maximum exponent for the random number 
