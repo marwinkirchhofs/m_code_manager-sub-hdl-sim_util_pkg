@@ -407,17 +407,32 @@ package util_pkg;
     endclass // cls_wide_random
 
     /*
+    * hold equality information about two real numbers: `equals` holds the 
+    * result of `real_equals`, delta the actuall difference between the two 
+    * numbers. Handy in case equality test goes wrong, to see how far off you 
+    * were.
+    */
+    typedef struct {
+        bit                 equals;
+        real                delta;
+    } real_bool_t;
+
+    /*
      * test equality of two real numbers - by testing if they are less than 
      * epsilon apart
      */
-    function automatic bit real_equals(real operand_1, real operand_2, real epsilon=1e-5);
+    function automatic real_bool_t real_equals(real operand_1, real operand_2, real epsilon=1e-5);
         // (didn't find a systemverilog abs function - if there is, please let 
         // me know)
+        real_bool_t result;
         if (operand_1>operand_2) begin
-            return operand_1-operand_2 < epsilon ? 1'b1 : 1'b0;
+            result.equals = operand_1-operand_2 < epsilon ? 1'b1 : 1'b0;
+            result.delta = operand_1-operand_2;
         end else begin
-            return operand_2-operand_1 < epsilon ? 1'b1 : 1'b0;
+            result.equals = operand_2-operand_1 < epsilon ? 1'b1 : 1'b0;
+            result.delta = operand_2-operand_1;
         end
+        return result;
     endfunction
 
     /*
