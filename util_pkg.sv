@@ -21,11 +21,11 @@ package util_pkg;
     /*
     * pseudo constrained randomization class for test data - all the freely 
     * available tools don't support actual constrained randomization. This class 
-* still provides a way of getting a randomized dynamic 2-dimensional regular 
-* arary with the individual vectors of the array all randomized.
+    * still provides a way of getting a randomized dynamic 2-dimensional regular 
+    * arary with the individual vectors of the array all randomized.
     * Zero-initialization is possible as well, for data type consistency between 
     * different test data objects (for example when one is for writing and the 
-* other is read-back, to be compared afterwards)
+    * other is read-back, to be compared afterwards)
     * Additionally, some conversion methods are provided between packed and 
     * unpacked (because dynamic arrays by definition are unpacked, but most 
     * hardware/dut interaction likes packed vectors).
@@ -347,14 +347,15 @@ package util_pkg;
     //----------------------------
 
     /*
-     * helper class (you could say dummy) for creating functions to process 
-     * integer-type numbers of arbitrary width
+     * helper class (you could say dummy) for creating parameterized functions 
+     * to process integer-type numbers of arbitrary width.
      * The point is that most of the systemverilog integer system is built for 
      * 32-bit, 64-bit at best. If you need anything wider, nothing applies that 
      * is not standard logic datatype arithmetic. The problem that led to 
      * creating this class were the random functions, because these are all only 
      * 32-bit, not even 64-bit. So for wider full-precision random numbers, you 
-     * need to concatenate.
+     * need to concatenate. And you can't directly parameterize standalone 
+     * functions, so the solution was a wrapper class.
      */
     class cls_wide_int #(
         parameter           BIT_WIDTH = 64
@@ -374,16 +375,15 @@ package util_pkg;
         static function wide_int_t get_random(wide_int_t min=0, wide_int_t max=MAX_WIDE_INT);
             automatic wide_int_t result = '0;
             automatic int i=0;
-            // bit to indicate if there have been more significant bits set in 
-            // max when randomizing result in 32-bit blocks of descending 
-            // significance
+            // how to concatenate: In general, go from MSB to LSB in 32-bit 
+            // blocks (set the size of the most significant block to just 
+            // dynamically fill up the remaining bitwidth). Record as soon as 
+            // you encounter a bit set in `max` in the current slice 
+            // (`max_larger`).  If the first `max` bit is in the current slice, 
+            // then the `max` slice is the random range limit for the current 
+            // result slice. If a `max` bit was set in a higher slice, it 
+            // doesn't matter what the current slice does, freely randomize.
             automatic bit max_larger = 1'b0;
-            // how to concatenate: Go from LSB to MSB in 32-bit blocks. If in 
-            // `max` there is any bit set of higher significance than the 
-            // current 32-bit block, just randomize the current block. Otherwise, 
-            // look at the current block and the current slice of `max` as 
-            // isolated 32-bit integers. Do the same for the remaining chunk of 
-            // MSBs.
             result[BIT_WIDTH-1 -: BITS_REMAINDER_32INT] =
                             $urandom_range(0, max[BIT_WIDTH-1 -: BITS_REMAINDER_32INT]);
             if (! max[BIT_WIDTH-1 -: BITS_REMAINDER_32INT] == '0) begin
@@ -391,10 +391,10 @@ package util_pkg;
             end
             for (i=(NUM_32INT*32); i>0; i-=32) begin
                 if (max_larger) begin
-                    // there has been a more significant bit set in `max`, so 
-                    // you're safe to just randomize
                     result[i-1 -: 32] = $urandom;
                 end else begin
+                    // (note that max[i-1 -: 32] can still be '0 at this point, 
+                    // but that behaves correctly regardless of `max_larger`)
                     result[i-1 -: 32] = $urandom_range(0, max[i-1 -: 32]);
                     if (! max[i-1 -: 32] == 32'b0) begin
                         max_larger = 1'b1;
@@ -440,30 +440,17 @@ package util_pkg;
 
     /*
     * generate a randomized constrained real number
-    * :max_exponent: The NON-BIASED maximum exponent for the random number 
-    * (meaning, in 64-bit ieee float, 128 would be the largest meaningful value; 
-* 127 if we exclude nan/infinity). Defaults to the largest non-nan/infinity 
-* exponent (thus 127 in 64-bit ieee float)
-    * :min_exponent: minimum NON-BIASED (see :max_exponent:) exponent. Defaults 
-    * to miminum possible value, including the all 0's biased exponent (allowing 
-    * zero and denormalized numbers).
+    * :min/max: minimum and maximum, as expected
+    * :user_min_exponent: minimum NON-BIASED (you could say "human-readable") 
+    * exponent. Defaults to miminum possible value (aka no restriction), 
+    * including the all 0's biased exponent (allowing zero and denormalized 
+    * numbers).
     */
-//     function automatic real real_random(
-//         int max_exponent = $pow(2, fun_float_width_exponent(FLOAT_STD_IEEE_754_64)-1) -
-//                                 1 - fun_float_exponent_bias(FLOAT_STD_IEEE_754_64),
-//         int min_exponent = -fun_float_exponent_bias(FLOAT_STD_IEEE_754_64)
-//     );
-//         bit sign_bit = $random;
-//         bit [fun_float_width_mantissa(FLOAT_STD_IEEE_754_64)-1:0] mantissa = $random;
-//         bit [fun_float_width_exponent(FLOAT_STD_IEEE_754_64)-1:0] exponent =
-//                                                 $random_range(min_exponent, max_exponent);
-//         return $bitstoreal({
-//                 sign_bit,
-//                 exponent+fun_float_exponent_bias(FLOAT_STD_IEEE_754_64),
-//                 mantissa});
-//     endfunction
     function automatic real real_random(real min, real max,
                             int user_min_exponent=-fun_float_exponent_bias(FLOAT_STD_IEEE_754_64));
+        // (I'm not sure if I really need all of - or even any - of these 
+        // `automatic` classifiers. But it works, so the hell I'm not going to 
+        // touch it)
         automatic bit [63:0] max_bits = $realtobits(max);
         automatic uint64_t max_exponent = uint64_t'(max_bits[62:52]);
         automatic uint64_t max_mantissa = uint64_t'(max_bits[51:0]);
@@ -485,6 +472,13 @@ package util_pkg;
         automatic bit sign_bit;
         automatic bit [10:0] exponent;
         automatic bit [51:0] mantissa;
+
+        // TLDR: 1. choose a random sign bit that meets min and max. 2.  
+        // Depending on the sign bit, determine the valid exponent range -> 
+        // choose a random exponent from that range. 3. Choose a random 
+        // mantissa. In case the selected exponent hits any of the constraints, 
+        // make sure to restrict the mantissa such that the constraints 
+        // eventually are met.
 
         // STEP 1: SIGN BIT
         // if the max is negative, result has to be negative, and vice versa if 
@@ -546,21 +540,14 @@ package util_pkg;
         // lower-equal the maximum mantissa. Likewise if the exponent is 
         // min_exponent, the mantissa has to be larger-equal min_mantissa.
         if (exponent == actual_max_exponent) begin
-//             mantissa = $urandom_range(0, max_mantissa);
             mantissa = cls_wide_int#(52)::get_random(0, actual_max_mantissa);
         end else if (exponent == actual_min_exponent) begin
-//             mantissa = $urandom_range(min_mantissa, uint64_t'({52'{1'b1}}));
             mantissa = cls_wide_int#(52)::get_random(actual_min_mantissa);
         end else begin
             mantissa = cls_wide_int#(52)::get_random();
-//             mantissa = '0;
         end
 
-        return $bitstoreal({
-                sign_bit,
-//                 exponent+fun_float_exponent_bias(FLOAT_STD_IEEE_754_64),
-                exponent,
-                mantissa});
+        return $bitstoreal({sign_bit, exponent, mantissa});
     endfunction
 
     //----------------------------
