@@ -395,11 +395,9 @@ package util_pkg;
                     // you're safe to just randomize
                     result[i-1 -: 32] = $urandom;
                 end else begin
+                    result[i-1 -: 32] = $urandom_range(0, max[i-1 -: 32]);
                     if (! max[i-1 -: 32] == 32'b0) begin
-                        result[i-1 -: 32] = $urandom_range(0, max[i-1 -: 32]);
                         max_larger = 1'b1;
-                    end else begin
-                        result[i-1 -: 32] = $urandom;
                     end
                 end
             end
