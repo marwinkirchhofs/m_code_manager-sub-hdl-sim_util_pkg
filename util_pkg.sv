@@ -362,7 +362,7 @@ package util_pkg;
         $display("******************************************");
         $display(" TEST STATISTICS");
         $display(" passed: %0d - failed: %0d", success, failed);
-        $display(" success rate: %.2f%%", success/(success+failed)*100);
+        $display(" success rate: %.2f%%", real'(success)/(success+failed)*100);
         $display("******************************************\n");
     endfunction
 
