@@ -573,7 +573,7 @@ package util_pkg;
         $display("********************\n");
     endfunction
 
-    function void print_tests_stats(int success, int failed);
+    function void print_tests_stats(longint success, longint failed);
         $display("******************************************");
         $display(" TEST STATISTICS");
         $display(" passed: %0d - failed: %0d", success, failed);
