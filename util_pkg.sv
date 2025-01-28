@@ -563,12 +563,15 @@ package util_pkg;
         $display("********************\n");
     endfunction
 
-    function void print_test_result(string test_name, bit result);
+    function void print_test_result(string test_name, bit result, string test_desc="");
         $display("********************");
         if (result) begin
             $display(" TEST %s PASSED ", test_name);
         end else begin
             $display(" XXX TEST %s FAILED XXX", test_name);
+        end
+        if (test_desc != "") begin
+            $display("%s", test_desc);
         end
         $display("********************\n");
     endfunction
