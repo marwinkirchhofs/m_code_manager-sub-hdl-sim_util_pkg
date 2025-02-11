@@ -620,8 +620,6 @@ package util_pkg;
         * edge
         */
         task init();
-            @(posedge if_rst.clk);
-
             if (`VERBOSITY >= VERBOSITY_INFO) begin
                 $display("[%0t] deactivating reset", $time);
             end
