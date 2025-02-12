@@ -564,7 +564,7 @@ package util_pkg;
     endfunction
 
     function void print_test_result(string test_name, bit result, string test_desc="");
-        $display("********************");
+        $display("\n********************");
         if (result) begin
             $display(" TEST %s PASSED ", test_name);
         end else begin
@@ -573,11 +573,11 @@ package util_pkg;
         if (test_desc != "") begin
             $display("%s", test_desc);
         end
-        $display("********************\n");
+        $display("********************");
     endfunction
 
     function void print_tests_stats(longint success, longint failed);
-        $display("******************************************");
+        $display("\n******************************************");
         $display(" TEST STATISTICS");
         $display(" passed: %0d - failed: %0d", success, failed);
         $display(" success rate: %.2f%%", real'(success)/(success+failed)*100);
