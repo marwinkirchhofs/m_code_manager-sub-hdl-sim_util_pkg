@@ -362,7 +362,7 @@ package util_pkg;
     );
         localparam          MAX_WIDE_INT = {BIT_WIDTH{1'b1}};
         localparam          NUM_32INT = $floor(BIT_WIDTH/32);
-        localparam          BITS_REMAINDER_32INT = BIT_WIDTH - 32*NUM_32INT;
+        localparam          BITS_REMAINDER_32INT = int'(BIT_WIDTH - 32*NUM_32INT);
 
         typedef bit[BIT_WIDTH-1:0] wide_int_t;
 
